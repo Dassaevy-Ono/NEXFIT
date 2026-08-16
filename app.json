@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "projetoAppNex",
-    "slug": "projetoAppNex",
+    "name": "NEXFIT",
+    "slug": "nexfit",
     "scheme": "nexfit",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,6 +17,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.dassaevyono.nexfit",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -29,6 +30,11 @@
     },
     "plugins": [
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2dacaef3-3453-4e11-9cc0-69ff0e50388d"
+      }
+    }
   }
 }
