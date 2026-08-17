@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
+  Alert,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,51 +16,91 @@ import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from './src/lib/supabase';
 import { CadastroScreen } from './src/screens/CadastroScreen';
+import { EscolhaPerfilScreen } from './src/screens/EscolhaPerfilScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 
-type Tela =
-  | 'inicio'
-  | 'perfil'
-  | 'cadastro'
-  | 'login'
-  | 'area';
-
+type Tela = 'inicio' | 'perfil' | 'cadastro' | 'login';
 type TipoUsuario = 'student' | 'trainer';
+
+type Perfil = {
+  full_name: string;
+  role: TipoUsuario;
+  onboarding_completed: boolean;
+};
 
 export default function App() {
   const [tela, setTela] = useState<Tela>('inicio');
   const [tipoUsuario, setTipoUsuario] =
     useState<TipoUsuario>('student');
   const [sessao, setSessao] = useState<Session | null>(null);
-  const [verificandoSessao, setVerificandoSessao] = useState(true);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [verificandoSessao, setVerificandoSessao] =
+    useState(true);
+  const [carregandoPerfil, setCarregandoPerfil] =
+    useState(false);
+  const [erroPerfil, setErroPerfil] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSessao(data.session);
-
-      if (data.session) {
-        setTela('area');
-      }
-
       setVerificandoSessao(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
-      setSessao(novaSessao);
-
-      if (novaSessao) {
-        setTela('area');
-      } else {
-        setTela('inicio');
+    } = supabase.auth.onAuthStateChange(
+      (_evento, novaSessao) => {
+        setSessao(novaSessao);
       }
-    });
+    );
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!sessao) {
+      setPerfil(null);
+      setErroPerfil(false);
+      setCarregandoPerfil(false);
+      return;
+    }
+
+    const carregarPerfil = async () => {
+      try {
+        setCarregandoPerfil(true);
+        setErroPerfil(false);
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select(
+            'full_name, role, onboarding_completed'
+          )
+          .eq('id', sessao.user.id)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        setPerfil(data as Perfil);
+      } catch (error) {
+        setErroPerfil(true);
+
+        const mensagem =
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar o perfil.';
+
+        Alert.alert('Erro no perfil', mensagem);
+      } finally {
+        setCarregandoPerfil(false);
+      }
+    };
+
+    carregarPerfil();
+  }, [sessao]);
 
   const abrirCadastro = (tipo: TipoUsuario) => {
     setTipoUsuario(tipo);
@@ -68,14 +109,132 @@ export default function App() {
 
   const sair = async () => {
     await supabase.auth.signOut();
+    setTela('inicio');
   };
 
-  if (verificandoSessao) {
+  const concluirOnboarding = (tipo: TipoUsuario) => {
+    setPerfil((perfilAtual) => {
+      if (!perfilAtual) {
+        return perfilAtual;
+      }
+
+      return {
+        ...perfilAtual,
+        role: tipo,
+        onboarding_completed: true,
+      };
+    });
+  };
+
+  if (
+    verificandoSessao ||
+    (sessao && carregandoPerfil)
+  ) {
     return (
       <SafeAreaProvider>
         <SafeAreaView style={styles.carregamento}>
           <StatusBar style="light" />
-          <ActivityIndicator size="large" color="#B6FF2E" />
+          <ActivityIndicator
+            size="large"
+            color="#B6FF2E"
+          />
+          <Text style={styles.textoCarregamento}>
+            Carregando NEXFIT...
+          </Text>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (sessao && erroPerfil) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+
+          <View style={styles.logoArea}>
+            <Text style={styles.tituloArea}>
+              NÃO FOI POSSÍVEL CARREGAR O PERFIL
+            </Text>
+
+            <TouchableOpacity
+              style={styles.botaoSecundario}
+              onPress={sair}
+            >
+              <Text style={styles.textoSecundario}>SAIR</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (
+    sessao &&
+    perfil &&
+    !perfil.onboarding_completed
+  ) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+
+          <EscolhaPerfilScreen
+            userId={sessao.user.id}
+            onConcluido={concluirOnboarding}
+            onSair={sair}
+          />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (sessao && perfil) {
+    const perfilAluno = perfil.role === 'student';
+
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+
+          <View style={styles.logoArea}>
+            <Text style={styles.logo}>
+              Nex<Text style={styles.logoDestaque}>FIT</Text>
+            </Text>
+
+            <Text style={styles.saudacao}>
+              Olá, {perfil.full_name || 'usuário'}!
+            </Text>
+
+            <Text style={styles.tituloArea}>
+              {perfilAluno
+                ? 'ÁREA DO ALUNO'
+                : 'ÁREA DO PERSONAL'}
+            </Text>
+
+            <Text style={styles.mensagem}>
+              {perfilAluno
+                ? 'Seus treinos e sua evolução aparecerão aqui.'
+                : 'Seus alunos e treinos aparecerão aqui.'}
+            </Text>
+
+            <View style={styles.cartaoPerfil}>
+              <Text style={styles.labelPerfil}>
+                PERFIL ATIVO
+              </Text>
+
+              <Text style={styles.valorPerfil}>
+                {perfilAluno ? 'ALUNO' : 'PERSONAL'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.botaoSecundario}
+              onPress={sair}
+            >
+              <Text style={styles.textoSecundario}>SAIR</Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </SafeAreaProvider>
     );
@@ -100,14 +259,18 @@ export default function App() {
               style={styles.botao}
               onPress={() => setTela('perfil')}
             >
-              <Text style={styles.textoBotao}>CRIAR CONTA</Text>
+              <Text style={styles.textoBotao}>
+                CRIAR CONTA
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.botaoSecundario}
               onPress={() => setTela('login')}
             >
-              <Text style={styles.textoSecundario}>ENTRAR</Text>
+              <Text style={styles.textoSecundario}>
+                ENTRAR
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -122,7 +285,9 @@ export default function App() {
               style={styles.botao}
               onPress={() => abrirCadastro('student')}
             >
-              <Text style={styles.textoBotao}>SOU ALUNO</Text>
+              <Text style={styles.textoBotao}>
+                SOU ALUNO
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -134,7 +299,9 @@ export default function App() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setTela('inicio')}>
+            <TouchableOpacity
+              onPress={() => setTela('inicio')}
+            >
               <Text style={styles.voltar}>VOLTAR</Text>
             </TouchableOpacity>
           </View>
@@ -150,33 +317,8 @@ export default function App() {
         {tela === 'login' && (
           <LoginScreen
             onVoltar={() => setTela('inicio')}
-            onLoginSucesso={() => setTela('area')}
+            onLoginSucesso={() => undefined}
           />
-        )}
-
-        {tela === 'area' && sessao && (
-          <View style={styles.logoArea}>
-            <Text style={styles.logo}>
-              Nex<Text style={styles.logoDestaque}>FIT</Text>
-            </Text>
-
-            <Text style={styles.tituloArea}>LOGIN REALIZADO</Text>
-
-            <Text style={styles.email}>
-              {sessao.user.email}
-            </Text>
-
-            <Text style={styles.mensagem}>
-              Sua conta está conectada ao Supabase.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.botaoSecundario}
-              onPress={sair}
-            >
-              <Text style={styles.textoSecundario}>SAIR</Text>
-            </TouchableOpacity>
-          </View>
         )}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -194,6 +336,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B0D10',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  textoCarregamento: {
+    color: '#89919D',
+    fontSize: 13,
+    marginTop: 14,
   },
 
   logoArea: {
@@ -250,7 +398,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 48,
     borderRadius: 12,
-    marginTop: 12,
+    marginTop: 14,
   },
 
   textoSecundario: {
@@ -267,25 +415,53 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
 
-  tituloArea: {
+  saudacao: {
     color: '#F5F7FA',
-    fontSize: 24,
-    fontWeight: '900',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
     marginTop: 28,
   },
 
-  email: {
+  tituloArea: {
     color: '#B6FF2E',
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 12,
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginTop: 10,
   },
 
   mensagem: {
     color: '#89919D',
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 20,
+    lineHeight: 21,
+    marginTop: 10,
+  },
+
+  cartaoPerfil: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#15191E',
+    borderWidth: 1,
+    borderColor: '#2A3038',
+    borderRadius: 14,
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 24,
+  },
+
+  labelPerfil: {
+    color: '#89919D',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+
+  valorPerfil: {
+    color: '#B6FF2E',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 6,
   },
 });
