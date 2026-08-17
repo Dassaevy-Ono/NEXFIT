@@ -1,3 +1,5 @@
+import { AlunoDashboard } from './src/screens/AlunoDashboard';
+import { PersonalDashboard } from './src/screens/PersonalDashboard';
 import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -26,6 +28,7 @@ type Perfil = {
   full_name: string;
   role: TipoUsuario;
   onboarding_completed: boolean;
+  personal_code: string | null;  
 };
 
 export default function App() {
@@ -75,7 +78,7 @@ export default function App() {
         const { data, error } = await supabase
           .from('profiles')
           .select(
-            'full_name, role, onboarding_completed'
+            'full_name, role, onboarding_completed, personal_code'
           )
           .eq('id', sessao.user.id)
           .single();
@@ -190,55 +193,27 @@ export default function App() {
   }
 
   if (sessao && perfil) {
-    const perfilAluno = perfil.role === 'student';
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
 
-    return (
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.container}>
-          <StatusBar style="light" />
-
-          <View style={styles.logoArea}>
-            <Text style={styles.logo}>
-              Nex<Text style={styles.logoDestaque}>FIT</Text>
-            </Text>
-
-            <Text style={styles.saudacao}>
-              Olá, {perfil.full_name || 'usuário'}!
-            </Text>
-
-            <Text style={styles.tituloArea}>
-              {perfilAluno
-                ? 'ÁREA DO ALUNO'
-                : 'ÁREA DO PERSONAL'}
-            </Text>
-
-            <Text style={styles.mensagem}>
-              {perfilAluno
-                ? 'Seus treinos e sua evolução aparecerão aqui.'
-                : 'Seus alunos e treinos aparecerão aqui.'}
-            </Text>
-
-            <View style={styles.cartaoPerfil}>
-              <Text style={styles.labelPerfil}>
-                PERFIL ATIVO
-              </Text>
-
-              <Text style={styles.valorPerfil}>
-                {perfilAluno ? 'ALUNO' : 'PERSONAL'}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.botaoSecundario}
-              onPress={sair}
-            >
-              <Text style={styles.textoSecundario}>SAIR</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </SafeAreaProvider>
-    );
-  }
+        {perfil.role === 'student' ? (
+          <AlunoDashboard
+            nome={perfil.full_name}
+            onSair={sair}
+          />
+        ) : (
+          <PersonalDashboard
+            nome={perfil.full_name}
+            codigo={perfil.personal_code}
+            onSair={sair}
+          />
+        )}
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
 
   return (
     <SafeAreaProvider>
